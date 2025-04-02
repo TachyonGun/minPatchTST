@@ -13,23 +13,24 @@ import wandb
 import os
 
 # Configuration
-DATASET = 'seed_iv/session'
-USE_WANDB = True # Set to True to enable wandb logging
-WEIGHT_DECAY = 1e-3  # Weight decay for regularization
+DATASET = 'seed_iv/session/'
+USE_WANDB = False # Set to True to enable wandb logging
 CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
+
 
 # Otherwise use one of these
 #DATASET = 'your/path/to/dataset'  # Options: SEED, ETT-small, electricity, traffic, weather, or path to custom dataset
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Custom dataset configuration (if using GenericArrayDataset)
-USE_GENERIC_DATASET = False  # Set to True to use GenericArrayDataset
+WEIGHT_DECAY = 1e-3  # Weight decay for regularization
+USE_GENERIC_DATASET = True if 'all_six_datasets' not in DATASET else False # Set to True to use GenericArrayDataset
 GENERIC_CONFIG = {
     'context_points': 1000,    # Number of input timesteps
     'target_points': 200,      # Number of timesteps to predict if doing forecasting
     'patch_len': 100,          # Length of each patch
     'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
-    'batch_size': 256,          # Batch size for training
+    'batch_size': 512,          # Batch size for training
     'mask_ratio': 0.4,         # Ratio of patches to mask
     'n_epochs': 20,            # Number of training epochs
     'd_model': 128,           # Model dimension
