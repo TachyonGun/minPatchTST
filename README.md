@@ -103,7 +103,6 @@ To pretrain on one of the datasets used in the original paper:
       ```bash
       python pretrain.py
       ```
-   
 
 ## Setting up the SEED Dataset
 
@@ -129,7 +128,7 @@ To pretrain on one of the datasets used in the original paper:
 │       └── ...
 ```
 
-3. Run the preprocessing script:
+3. Run the preprocessing script (needs ~40GB RAM):
 ```bash
 python make_seed.py
 ```
@@ -145,9 +144,36 @@ This will create the processed dataset in the following structure:
 │   └── ... (original data folders)
 ```
 
-The processed .npy files will contain the EEG data in the format expected by the model.
+The processed .npy files will contain the EEG data in the format expected by the model. The output of the script should look like:
 
-To pretrain, simply edit the `DATASET` variable of `pretrain.py` to `seed_iv/session/` and run
+```
+Final shapes:
+Train data: (1597, 62, 10000), labels: (1597,)
+Validation data: (427, 62, 10000), labels: (427,)
+Test data: (428, 62, 10000), labels: (428,)
+
+Saving arrays...
+
+Training label distribution:
+Label 0: 435 samples (27.2%)
+Label 1: 467 samples (29.2%)
+Label 2: 432 samples (27.1%)
+Label 3: 263 samples (16.5%)
+
+Validation label distribution:
+Label 0: 113 samples (26.5%)
+Label 1: 125 samples (29.3%)
+Label 2: 81 samples (19.0%)
+Label 3: 108 samples (25.3%)
+
+Test label distribution:
+Label 0: 127 samples (29.7%)
+Label 1: 115 samples (26.9%)
+Label 2: 84 samples (19.6%)
+Label 3: 102 samples (23.8%)
+```
+
+To pretrain, simply edit the `DATASET` variable of `pretrain.py` to your new `seed_iv/session/` and run
    ```bash
    python pretrain.py
    ```
