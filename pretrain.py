@@ -13,7 +13,8 @@ import wandb
 
 # Configuration
 DATASET = 'seed_iv/session'
-USE_WANDB = True  # Set to True to enable wandb logging
+USE_WANDB = True # Set to True to enable wandb logging
+WEIGHT_DECAY = 1e-3  # Weight decay for regularization
 
 # Otherwise use one of these
 #DATASET = 'your/path/to/dataset'  # Options: SEED, ETT-small, electricity, traffic, weather, or path to custom dataset
@@ -28,7 +29,7 @@ GENERIC_CONFIG = {
     'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
     'batch_size': 128,          # Batch size for training
     'mask_ratio': 0.4,         # Ratio of patches to mask
-    'n_epochs': 10,            # Number of training epochs
+    'n_epochs': 20,            # Number of training epochs
     'd_model': 128,           # Model dimension
     'n_heads': 16,            # Number of attention heads
     'd_ff': 512,             # Feed-forward dimension
@@ -37,7 +38,8 @@ GENERIC_CONFIG = {
     'use_revin': True,       # Whether to use RevIN
     'revin_affine': True,    # RevIN affine parameter
     'revin_eps': 1e-5,       # RevIN epsilon
-    'subtract_last': False    # RevIN subtract last
+    'subtract_last': False,    # RevIN subtract last
+    'weight_decay': WEIGHT_DECAY     # Weight decay for regularization
 }
 
 # Model hyperparameters (matching paper configuration)
@@ -59,6 +61,7 @@ if USE_GENERIC_DATASET:
     REVIN_AFFINE = GENERIC_CONFIG['revin_affine']
     REVIN_EPS = GENERIC_CONFIG['revin_eps']
     SUBTRACT_LAST = GENERIC_CONFIG['subtract_last']
+    WEIGHT_DECAY = GENERIC_CONFIG['weight_decay']
 
 
 else:
@@ -434,6 +437,7 @@ def main():
                 "max_lr": MAX_LR,
                 "div_factor": DIV_FACTOR,
                 "final_div_factor": FINAL_DIV_FACTOR,
+                "weight_decay": WEIGHT_DECAY,
             }
         )
     
@@ -507,7 +511,7 @@ def main():
     
     # Setup training
     criterion = MaskedMSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=MAX_LR/DIV_FACTOR)
+    optimizer = optim.Adam(model.parameters(), lr=MAX_LR/DIV_FACTOR, weight_decay=WEIGHT_DECAY)
     
     # Setup OneCycleLR scheduler
     steps_per_epoch = len(train_loader)
