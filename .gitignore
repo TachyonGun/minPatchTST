@@ -1,0 +1,18 @@
+__pycache__/
+
+# Project specific
+wandb/
+*.pth
+*.pt
+checkpoint/
+*.ckpt
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
