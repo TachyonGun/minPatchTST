@@ -26,7 +26,7 @@ GENERIC_CONFIG = {
     'target_points': 200,      # Number of timesteps to predict if doing forecasting
     'patch_len': 100,          # Length of each patch
     'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
-    'batch_size': 256,          # Batch size for training
+    'batch_size': 128,          # Batch size for training
     'mask_ratio': 0.4,         # Ratio of patches to mask
     'n_epochs': 10,            # Number of training epochs
     'd_model': 128,           # Model dimension
