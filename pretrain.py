@@ -12,21 +12,21 @@ import time
 import wandb
 
 # Configuration
-DATASET = 'SEED' # This 
+DATASET = 'seed_iv/session'
 USE_WANDB = True  # Set to True to enable wandb logging
 
 # Otherwise use one of these
-#DATASET = 'your/path/to/dataset'  # Options: SEED, ETTh1, ETTh2, ETTm1, ETTm2, electricity, traffic, weather, or path to custom dataset
+#DATASET = 'your/path/to/dataset'  # Options: SEED, ETT-small, electricity, traffic, weather, or path to custom dataset
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Custom dataset configuration (if using GenericArrayDataset)
-USE_GENERIC_DATASET = False  # Set to True to use GenericArrayDataset
+USE_GENERIC_DATASET = True  # Set to True to use GenericArrayDataset
 GENERIC_CONFIG = {
     'context_points': 1000,    # Number of input timesteps
-    'target_points': 200,      # Number of timesteps to predict
+    'target_points': 200,      # Number of timesteps to predict if doing forecasting
     'patch_len': 100,          # Length of each patch
-    'stride': 50,              # Stride between patches
-    'batch_size': 512,          # Batch size for training
+    'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
+    'batch_size': 256,          # Batch size for training
     'mask_ratio': 0.4,         # Ratio of patches to mask
     'n_epochs': 10,            # Number of training epochs
     'd_model': 128,           # Model dimension
@@ -61,23 +61,6 @@ if USE_GENERIC_DATASET:
     SUBTRACT_LAST = GENERIC_CONFIG['subtract_last']
 
 
-elif DATASET == 'SEED':
-    CONTEXT_POINTS = 1000  # 10 seconds of context
-    TARGET_POINTS = 1000   # 1 second of prediction
-    PATCH_LEN = 100       # 100ms patches
-    STRIDE = 100           # 50ms stride
-    BATCH_SIZE = 128
-    MASK_RATIO = 0.4
-    N_EPOCHS = 10
-    D_MODEL = 128
-    N_HEADS = 16
-    D_FF = 512
-    DROPOUT = 0.2
-    HEAD_DROPOUT = 0.2
-    USE_REVIN = True
-    REVIN_AFFINE = True
-    REVIN_EPS = 1e-5
-    SUBTRACT_LAST = False
 else:
     # Original hyperparameters for other datasets
     CONTEXT_POINTS = 512
