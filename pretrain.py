@@ -10,24 +10,26 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import time
 import wandb
+import os
 
 # Configuration
 DATASET = 'seed_iv/session'
 USE_WANDB = True # Set to True to enable wandb logging
 WEIGHT_DECAY = 1e-3  # Weight decay for regularization
+CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
 
 # Otherwise use one of these
 #DATASET = 'your/path/to/dataset'  # Options: SEED, ETT-small, electricity, traffic, weather, or path to custom dataset
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Custom dataset configuration (if using GenericArrayDataset)
-USE_GENERIC_DATASET = True  # Set to True to use GenericArrayDataset
+USE_GENERIC_DATASET = False  # Set to True to use GenericArrayDataset
 GENERIC_CONFIG = {
     'context_points': 1000,    # Number of input timesteps
     'target_points': 200,      # Number of timesteps to predict if doing forecasting
     'patch_len': 100,          # Length of each patch
     'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
-    'batch_size': 128,          # Batch size for training
+    'batch_size': 256,          # Batch size for training
     'mask_ratio': 0.4,         # Ratio of patches to mask
     'n_epochs': 20,            # Number of training epochs
     'd_model': 128,           # Model dimension
@@ -413,6 +415,9 @@ def plot_reconstruction(model, data, mask_ratio, patch_len, stride, column_names
             wandb.log({filename: wandb.Image(filename)})
 
 def main():
+    # Create checkpoint directory if it doesn't exist
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    
     # Initialize wandb if enabled
     if USE_WANDB:
         wandb.init(
@@ -591,6 +596,9 @@ def main():
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            # Create a safe filename by replacing potential problematic characters
+            safe_dataset_name = DATASET.replace('/', '_').replace('\\', '_')
+            checkpoint_path = os.path.join(CHECKPOINT_DIR, f'pretrained_{safe_dataset_name}.pth')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -598,8 +606,8 @@ def main():
                 'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                 'revin_state_dict': revin.state_dict() if revin else None,
                 'val_loss': val_loss,
-            }, f'pretrained_{DATASET}.pth')
-            print('Model saved!')
+            }, checkpoint_path)
+            print(f'Model saved to {checkpoint_path}!')
         print('-' * 50)
     
     # Close wandb run if enabled
