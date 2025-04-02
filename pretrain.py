@@ -45,7 +45,7 @@ GENERIC_CONFIG = {
     'weight_decay': WEIGHT_DECAY     # Weight decay for regularization
 }
 
-# Model hyperparameters (matching paper configuration)
+# Model hyperparameters (these generic ones worked well for SEED IV)
 if USE_GENERIC_DATASET:
     # Use configuration from GENERIC_CONFIG
     CONTEXT_POINTS = GENERIC_CONFIG['context_points']
