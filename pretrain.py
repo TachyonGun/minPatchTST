@@ -13,8 +13,8 @@ import wandb
 import os
 
 # Configuration
-DATASET = 'seed_iv/session/'
-USE_WANDB = False # Set to True to enable wandb logging
+DATASET = 'all_six_datasets/ett-small'
+USE_WANDB = True # Set to True to enable wandb logging
 CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
 
 
@@ -23,20 +23,22 @@ CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Custom dataset configuration (if using GenericArrayDataset)
-WEIGHT_DECAY = 1e-3  # Weight decay for regularization
+WEIGHT_DECAY = 0.0 # 1e-3  # Weight decay for regularization
+DECAY_AFTER = None # None or number of epochs to decay after
+
 USE_GENERIC_DATASET = True if 'all_six_datasets' not in DATASET else False # Set to True to use GenericArrayDataset
 GENERIC_CONFIG = {
     'context_points': 1000,    # Number of input timesteps
     'target_points': 200,      # Number of timesteps to predict if doing forecasting
     'patch_len': 100,          # Length of each patch
-    'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
-    'batch_size': 512,          # Batch size for training
-    'mask_ratio': 0.4,         # Ratio of patches to mask
-    'n_epochs': 20,            # Number of training epochs
+    'stride': 50,              # Stride between patches (if it equals patch_len, no overlap)
+    'batch_size': 128,          # Batch size for training
+    'mask_ratio': 0.2,         # Ratio of patches to mask
+    'n_epochs': 5,            # Number of training epochs
     'd_model': 128,           # Model dimension
     'n_heads': 16,            # Number of attention heads
-    'd_ff': 512,             # Feed-forward dimension
-    'dropout': 0.2,          # Dropout rate
+    'd_ff': 256,             # Feed-forward dimension
+    'dropout': 0.4,          # Dropout rate
     'head_dropout': 0.2,     # Head dropout rate
     'use_revin': True,       # Whether to use RevIN
     'revin_affine': True,    # RevIN affine parameter
@@ -45,7 +47,9 @@ GENERIC_CONFIG = {
     'weight_decay': WEIGHT_DECAY     # Weight decay for regularization
 }
 
-# Model hyperparameters (these generic ones worked well for SEED IV)
+USE_PATCH64 = False
+
+# Model hyperparameters (matching paper configuration)
 if USE_GENERIC_DATASET:
     # Use configuration from GENERIC_CONFIG
     CONTEXT_POINTS = GENERIC_CONFIG['context_points']
@@ -66,6 +70,24 @@ if USE_GENERIC_DATASET:
     SUBTRACT_LAST = GENERIC_CONFIG['subtract_last']
     WEIGHT_DECAY = GENERIC_CONFIG['weight_decay']
 
+elif USE_PATCH64:
+    # Original hyperparameters for other datasets
+    CONTEXT_POINTS = 512
+    TARGET_POINTS = 96
+    PATCH_LEN = 16
+    STRIDE = 8
+    BATCH_SIZE = 16
+    MASK_RATIO = 0.4
+    N_EPOCHS = 10
+    D_MODEL = 128
+    N_HEADS = 16
+    D_FF = 256
+    DROPOUT = 0.2
+    HEAD_DROPOUT = 0.2
+    USE_REVIN = True
+    REVIN_AFFINE = True
+    REVIN_EPS = 1e-5
+    SUBTRACT_LAST = False
 
 else:
     # Original hyperparameters for other datasets
@@ -74,7 +96,7 @@ else:
     PATCH_LEN = 12
     STRIDE = 12
     BATCH_SIZE = 64
-    MASK_RATIO = 0.4
+    MASK_RATIO = 0.8
     N_EPOCHS = 10
     D_MODEL = 128
     N_HEADS = 16
@@ -98,6 +120,9 @@ MAX_VARS_TO_PLOT = 6      # Maximum number of variables to plot
 PLOT_FIGSIZE = (20, 10) # (15, 10)   # Figure size for plots
 KEEP_CONSTANT_MASK = True  # If True, use the same mask pattern for visualization across epochs
 COMPUTE_EPOCH_0_VALIDATION = True  # Set to True to compute and log validation loss at epoch 0
+
+# Masking value for masked patches
+MASKING_VALUE = 0.0  # Value to use for masked patches
 
 class RevIN(nn.Module):
     """
@@ -300,9 +325,15 @@ def train_epoch(model, train_loader, optimizer, criterion, mask_ratio, scheduler
         # Create mask
         mask = create_patch_mask(batch_size, data.size(1), mask_ratio)
         
+        # Create masked input by replacing masked patches with MASKING_VALUE
+        masked_data = data.clone()
+        # Expand mask to match data dimensions [batch_size, num_patches, n_vars, patch_len]
+        expanded_mask = mask.bool().unsqueeze(-1).unsqueeze(-1).expand_as(data)
+        masked_data[expanded_mask] = MASKING_VALUE
+        
         # Forward pass
         optimizer.zero_grad()
-        output = model(data)  # [batch_size, num_patch, n_vars, patch_len]
+        output = model(masked_data)  # [batch_size, num_patch, n_vars, patch_len]
         
         # Calculate loss on masked patches
         loss = criterion(output, data, mask)
@@ -351,8 +382,14 @@ def validate(model, val_loader, criterion, mask_ratio, revin=None):
             # Create mask
             mask = create_patch_mask(batch_size, data.size(1), mask_ratio)
             
+            # Create masked input by replacing masked patches with MASKING_VALUE
+            masked_data = data.clone()
+            # Expand mask to match data dimensions [batch_size, num_patches, n_vars, patch_len]
+            expanded_mask = mask.bool().unsqueeze(-1).unsqueeze(-1).expand_as(data)
+            masked_data[expanded_mask] = MASKING_VALUE
+            
             # Forward pass
-            output = model(data)
+            output = model(masked_data)
             
             # Calculate loss
             loss = criterion(output, data, mask)
@@ -405,14 +442,21 @@ def plot_reconstruction(model, data, mask_ratio, patch_len, stride, column_names
         else:
             mask = create_patch_mask(data.size(0), data.size(1), mask_ratio)
         
+        # Create masked input by replacing masked patches with MASKING_VALUE
+        masked_data = data.clone()
+        # Expand mask to match data dimensions [batch_size, num_patches, n_vars, patch_len]
+        expanded_mask = mask.bool().unsqueeze(-1).unsqueeze(-1).expand_as(data)
+        masked_data[expanded_mask] = MASKING_VALUE
+        
         # Get reconstruction
-        output = model(data)
+        output = model(masked_data)
         
         # Plot the results
         plot_sample_with_patches(data, output, mask, patch_len, stride, column_names, filename)
         
         # Log the figure to wandb if enabled
-        if USE_WANDB:
+        # check if wandb was initialized
+        if wandb.run is not None:
             wandb.log({filename: wandb.Image(filename)})
 
 def main():
@@ -610,7 +654,11 @@ def main():
             }, checkpoint_path)
             print(f'Model saved to {checkpoint_path}!')
         print('-' * 50)
-    
+
+        # Turn on weight decay after DECAY_AFTER epochs
+        if DECAY_AFTER is not None and epoch >= DECAY_AFTER:
+            scheduler.optimizer.param_groups[0]['weight_decay'] = WEIGHT_DECAY
+
     # Close wandb run if enabled
     if USE_WANDB:
         wandb.finish()
