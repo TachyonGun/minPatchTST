@@ -13,7 +13,7 @@ import wandb
 import os
 
 # Configuration
-DATASET = 'all_six_datasets/ett-small'
+DATASET = 'seed_iv/session'
 USE_WANDB = True # Set to True to enable wandb logging
 CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
 
@@ -21,27 +21,27 @@ CHECKPOINT_DIR = 'checkpoints'  # Directory to save model checkpoints
 # Otherwise use one of these
 #DATASET = 'your/path/to/dataset'  # Options: SEED, ETT-small, electricity, traffic, weather, or path to custom dataset
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+print(f"Using device: {DEVICE}")
 # Custom dataset configuration (if using GenericArrayDataset)
 WEIGHT_DECAY = 0.0 # 1e-3  # Weight decay for regularization
 DECAY_AFTER = None # None or number of epochs to decay after
 
-USE_GENERIC_DATASET = True if 'all_six_datasets' not in DATASET else False # Set to True to use GenericArrayDataset
+USE_GENERIC_DATASET = True # if 'all_six_datasets' not in DATASET else False # Set to True to use GenericArrayDataset
 GENERIC_CONFIG = {
-    'context_points': 1000,    # Number of input timesteps
-    'target_points': 200,      # Number of timesteps to predict if doing forecasting
-    'patch_len': 100,          # Length of each patch
-    'stride': 50,              # Stride between patches (if it equals patch_len, no overlap)
-    'batch_size': 128,          # Batch size for training
-    'mask_ratio': 0.2,         # Ratio of patches to mask
-    'n_epochs': 5,            # Number of training epochs
-    'd_model': 128,           # Model dimension
-    'n_heads': 16,            # Number of attention heads
-    'd_ff': 256,             # Feed-forward dimension
-    'dropout': 0.4,          # Dropout rate
-    'head_dropout': 0.2,     # Head dropout rate
+    'context_points': 2000,    # Number of input timesteps
+    'target_points': 0,      # Number of timesteps to predict if doing forecasting
+    'patch_len': 200,          # Length of each patch
+    'stride': 100,              # Stride between patches (if it equals patch_len, no overlap)
+    'batch_size': int(64),          # Batch size for training
+    'mask_ratio': 0.3,         # Ratio of patches to mask
+    'n_epochs': 20,            # Number of training epochs
+    'd_model': 768 // 2,           # Model dimension
+    'n_heads': 6,            # Number of attention heads
+    'd_ff': 768 * 2,             # Feed-forward dimension
+    'dropout': 0.05,          # Dropout rate
+    'head_dropout': 0.01,     # Head dropout rate
     'use_revin': True,       # Whether to use RevIN
-    'revin_affine': True,    # RevIN affine parameter
+    'revin_affine': False,    # RevIN affine parameter
     'revin_eps': 1e-5,       # RevIN epsilon
     'subtract_last': False,    # RevIN subtract last
     'weight_decay': WEIGHT_DECAY     # Weight decay for regularization
@@ -78,7 +78,7 @@ elif USE_PATCH64:
     STRIDE = 8
     BATCH_SIZE = 16
     MASK_RATIO = 0.4
-    N_EPOCHS = 10
+    N_EPOCHS = 20
     D_MODEL = 128
     N_HEADS = 16
     D_FF = 256
@@ -109,9 +109,9 @@ else:
     SUBTRACT_LAST = False
 
 # Added learning rate scheduling parameters
-MAX_LR = 1e-3  # Peak learning rate for one-cycle
-DIV_FACTOR = 25  # Initial learning rate will be MAX_LR/DIV_FACTOR
-FINAL_DIV_FACTOR = 1e4  # Final learning rate will be MAX_LR/FINAL_DIV_FACTOR
+MAX_LR = 5 * 1e-4 # 1e-4  # Peak learning rate for one-cycle
+DIV_FACTOR = 1  # Initial learning rate will be MAX_LR/DIV_FACTOR
+FINAL_DIV_FACTOR = 1  # Final learning rate will be MAX_LR/FINAL_DIV_FACTOR
 
 # Optional visualization settings
 PLOT_TRAIN_SAMPLE = True  # Set to True to plot a training sample at each epoch
@@ -536,7 +536,7 @@ def main():
         patch_len=PATCH_LEN,
         stride=STRIDE,
         num_patch=num_patches,
-        n_layers=3,
+        n_layers=6,
         d_model=D_MODEL,
         n_heads=N_HEADS,
         d_ff=D_FF,

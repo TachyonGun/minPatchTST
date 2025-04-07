@@ -19,9 +19,11 @@ def process_session_data(session_id, normalize_95th=True):
     
     all_data = []
     all_labels = []
+    recording_ids = []  # Track which recording each segment came from
     session_labels = get_session_labels(session_id)
     
     print(f"\nProcessing session {session_id}")
+    recording_counter = 0
     for file in tqdm(files):
         try:
             mat_data = sio.loadmat(os.path.join(session_dir, file))
@@ -47,23 +49,31 @@ def process_session_data(session_id, normalize_95th=True):
                 data = mat_data[key]  # Shape: [n_channels, timesteps]
                 
                 # Split into 10-second segments (10000 timesteps at 1000Hz)
-                segment_length = 10000
+                segment_length = 2000
                 n_complete_segments = data.shape[1] // segment_length
                 
+                # Store all segments from this recording together
+                recording_segments = []
                 for i in range(n_complete_segments):
                     start_idx = i * segment_length
                     end_idx = start_idx + segment_length
                     segment = data[:, start_idx:end_idx]
-                    all_data.append(segment)
-                    all_labels.append(label)
+                    recording_segments.append(segment)
+                
+                if recording_segments:
+                    all_data.append(np.stack(recording_segments))  # Shape: [n_segments, n_channels, timesteps]
+                    all_labels.extend([label] * len(recording_segments))
+                    recording_ids.extend([recording_counter] * len(recording_segments))
+                    recording_counter += 1
                     
         except Exception as e:
             print(f"\nError processing {file}: {str(e)}")
             continue
     
     # Convert to numpy arrays
-    data_array = np.array(all_data)  # Shape: [n_segments, n_channels, timesteps]
-    labels_array = np.array(all_labels)  # Shape: [n_segments]
+    data_array = np.concatenate(all_data, axis=0)  # Shape: [total_segments, n_channels, timesteps]
+    labels_array = np.array(all_labels)  # Shape: [total_segments]
+    recording_ids = np.array(recording_ids)  # Shape: [total_segments]
     
     if normalize_95th:
         # Normalize each channel by its 95th percentile
@@ -71,7 +81,7 @@ def process_session_data(session_id, normalize_95th=True):
         percentile_95[percentile_95 == 0] = 1.0
         data_array = data_array / percentile_95
     
-    return data_array, labels_array
+    return data_array, labels_array, recording_ids
 
 def save_train_val_test_split(save_dir='seed_iv/session1', val_ratio=0.5):
     """
@@ -84,25 +94,44 @@ def save_train_val_test_split(save_dir='seed_iv/session1', val_ratio=0.5):
     
     # Process training data (sessions 1 & 2)
     print("\nProcessing training data...")
-    train_data_1, train_labels_1 = process_session_data(session_id=1)
-    train_data_2, train_labels_2 = process_session_data(session_id=2)
+    train_data_1, train_labels_1, train_rec_1 = process_session_data(session_id=1)
+    train_data_2, train_labels_2, train_rec_2 = process_session_data(session_id=2)
     
     # Combine training data
     train_data = np.concatenate([train_data_1, train_data_2], axis=0)
     train_labels = np.concatenate([train_labels_1, train_labels_2], axis=0)
+    train_rec = np.concatenate([train_rec_1, train_rec_2 + len(np.unique(train_rec_1))], axis=0)
     
     # Process session 3 for validation and test
     print("\nProcessing validation/test data...")
-    val_test_data, val_test_labels = process_session_data(session_id=3)
+    val_test_data, val_test_labels, val_test_rec = process_session_data(session_id=3)
     
     # Split session 3 data between validation and test
-    n_val = int(len(val_test_data) * val_ratio)
+    unique_recordings = np.unique(val_test_rec)
+    n_val_recordings = int(len(unique_recordings) * val_ratio)
     
-    val_data = val_test_data[:n_val]
-    val_labels = val_test_labels[:n_val]
+    # Randomly shuffle recordings
+    np.random.seed(42)  # For reproducibility
+    np.random.shuffle(unique_recordings)
     
-    test_data = val_test_data[n_val:]
-    test_labels = val_test_labels[n_val:]
+    val_recordings = unique_recordings[:n_val_recordings]
+    test_recordings = unique_recordings[n_val_recordings:]
+    
+    # Split data based on recordings
+    val_mask = np.isin(val_test_rec, val_recordings)
+    val_data = val_test_data[val_mask]
+    val_labels = val_test_labels[val_mask]
+    
+    test_mask = np.isin(val_test_rec, test_recordings)
+    test_data = val_test_data[test_mask]
+    test_labels = val_test_labels[test_mask]
+    
+    # Shuffle training data by recordings
+    unique_train_recordings = np.unique(train_rec)
+    np.random.shuffle(unique_train_recordings)
+    train_order = np.concatenate([np.where(train_rec == rec)[0] for rec in unique_train_recordings])
+    train_data = train_data[train_order]
+    train_labels = train_labels[train_order]
     
     # Print shapes
     print("\nFinal shapes:")

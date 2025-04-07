@@ -27,7 +27,8 @@ class TimeSeriesDataset(Dataset):
         
     def _get_valid_indices(self):
         """Get indices of all valid sequences"""
-        total_len = self.context_points + self.target_points
+        # Use only context_points if target_points is 0
+        total_len = self.context_points if self.target_points == 0 else self.context_points + self.target_points
         valid_indices = []
         for i in range(len(self.data) - total_len + 1):
             valid_indices.append(i)
@@ -52,20 +53,22 @@ class TimeSeriesDataset(Dataset):
     
     def __getitem__(self, idx):
         start_idx = self.indices[idx]
-        end_idx = start_idx + self.context_points + self.target_points
+        # Use only context_points if target_points is 0
+        end_idx = start_idx + self.context_points if self.target_points == 0 else start_idx + self.context_points + self.target_points
         
         # Get sequence
         sequence = self.data[start_idx:end_idx]
         
-        # Split into input and target
-        x = sequence[:self.context_points]
-        y = sequence[self.context_points:]
-        
         # Convert input into patches
-        x = self._create_patches(torch.FloatTensor(x))  # [num_patches, n_vars, patch_len]
-        y = torch.FloatTensor(y)
+        x = self._create_patches(torch.FloatTensor(sequence[:self.context_points]))  # [num_patches, n_vars, patch_len]
         
-        return x, y
+        # Return zeroed tensor if target_points is 0
+        if self.target_points == 0:
+            y = torch.zeros((1, sequence.shape[1]), dtype=torch.float32)  # [1, n_vars]
+            return x, y
+        else:
+            y = torch.FloatTensor(sequence[self.context_points:])
+            return x, y
 
 class SEEDTimeSeriesDataset(Dataset):
     """Dataset for loading and preprocessing SEED-IV EEG data"""
@@ -161,17 +164,18 @@ class GenericArrayDataset(Dataset):
         self.stride = stride
         
         # Verify we have enough timesteps for context + target
-        total_points_needed = context_points + target_points
+        total_points_needed = context_points
         if self.data.shape[2] < total_points_needed:
             raise ValueError(f"Segment length {self.data.shape[2]} is shorter than "
-                           f"context ({context_points}) + target ({target_points}) points")
+                           f"required length ({total_points_needed} points)")
         
         # Calculate valid indices
         self.indices = self._get_valid_indices()
         
     def _get_valid_indices(self):
         """Get indices of all valid sequences within each segment"""
-        total_len = self.context_points + self.target_points
+        # For classification tasks, we only need context_points
+        total_len = self.context_points
         valid_indices = []
         
         # For each segment
@@ -204,23 +208,55 @@ class GenericArrayDataset(Dataset):
     def __getitem__(self, idx):
         # Get segment index and start position
         seg_idx, start_idx = self.indices[idx]
-        end_idx = start_idx + self.context_points + self.target_points
+        end_idx = start_idx + self.context_points if self.target_points == 0 else start_idx + self.context_points + self.target_points
         
         # Get sequence from the segment
         sequence = np.array(self.data[seg_idx, :, start_idx:end_idx])  # Copy to ensure contiguous memory
         
-        # Split into input and target
-        x = sequence[:, :self.context_points]  # [n_channels, context_points]
-        y = sequence[:, self.context_points:]  # [n_channels, target_points]
-        
-        # Convert to torch tensors and transpose to match expected format
-        x = torch.FloatTensor(x.T)  # [context_points, n_channels]
-        y = torch.FloatTensor(y.T)  # [target_points, n_channels]
+        # Convert to torch tensor and transpose to match expected format
+        x = torch.FloatTensor(sequence[:, :self.context_points].T)  # [context_points, n_channels]
         
         # Create patches from input
         x = self._create_patches(x)  # [num_patches, n_channels, patch_len]
         
-        return x, y
+        if self.target_points == 0:
+            y = torch.zeros((1, sequence.shape[0]), dtype=torch.float32)  # [1, n_channels]
+            return x, y
+        else:
+            y = torch.FloatTensor(sequence[:, self.context_points:].T)  # [target_points, n_channels]
+            return x, y
+
+class GenericArrayClassificationDataset(GenericArrayDataset):
+    """Generic dataset for memory-mapped array data with labels for classification tasks"""
+    def __init__(self, data_path, labels_path, context_points, target_points, patch_len, stride):
+        super().__init__(data_path, context_points, target_points, patch_len, stride)
+        
+        # Load labels using memory mapping
+        self.labels = np.load(labels_path, mmap_mode='r')
+        
+        # Verify labels shape matches data
+        if len(self.labels) != len(self.data):
+            raise ValueError(f"Number of labels ({len(self.labels)}) does not match "
+                           f"number of samples ({len(self.data)})")
+    
+    def __getitem__(self, idx):
+        # Get segment index and start position
+        seg_idx, start_idx = self.indices[idx]
+        end_idx = start_idx + self.context_points
+        
+        # Get sequence from the segment
+        sequence = np.array(self.data[seg_idx, :, start_idx:end_idx])  # Copy to ensure contiguous memory
+        
+        # Convert to torch tensor and transpose to match expected format
+        x = torch.FloatTensor(sequence.T)  # [context_points, n_channels]
+        
+        # Create patches from input
+        x = self._create_patches(x)  # [num_patches, n_channels, patch_len]
+        
+        # Get corresponding label
+        label = self.labels[seg_idx]
+        
+        return x, label
 
 def create_dataloader(dataset_name, context_points, target_points, patch_len, stride,
                      batch_size=32, scale=True, split_ratio=[0.7, 0.1, 0.2]):
@@ -337,3 +373,52 @@ def create_dataloader(dataset_name, context_points, target_points, patch_len, st
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
         return train_loader, val_loader, test_loader, column_names 
+
+def create_classification_dataloader(dataset_name, context_points, target_points, patch_len, stride,
+                     batch_size=32, scale=True, split_ratio=[0.7, 0.1, 0.2]):
+    """Create train/val/test dataloaders for classification tasks"""
+    # Check if directory contains train/val/test splits
+    if os.path.exists(os.path.join(dataset_name, 'train.npy')):
+        # Load train dataset
+        train_dataset = GenericArrayClassificationDataset(
+            os.path.join(dataset_name, 'train.npy'),
+            os.path.join(dataset_name, 'train_labels.npy'),
+            context_points, target_points, patch_len, stride
+        )
+        
+        # Try to load validation dataset
+        val_dataset = None
+        if os.path.exists(os.path.join(dataset_name, 'validation.npy')):
+            val_dataset = GenericArrayClassificationDataset(
+                os.path.join(dataset_name, 'validation.npy'),
+                os.path.join(dataset_name, 'validation_labels.npy'),
+                context_points, target_points, patch_len, stride
+            )
+        elif os.path.exists(os.path.join(dataset_name, 'val.npy')):
+            val_dataset = GenericArrayClassificationDataset(
+                os.path.join(dataset_name, 'val.npy'),
+                os.path.join(dataset_name, 'val_labels.npy'),
+                context_points, target_points, patch_len, stride
+            )
+            
+        # Try to load test dataset
+        test_dataset = None
+        if os.path.exists(os.path.join(dataset_name, 'test.npy')):
+            test_dataset = GenericArrayClassificationDataset(
+                os.path.join(dataset_name, 'test.npy'),
+                os.path.join(dataset_name, 'test_labels.npy'),
+                context_points, target_points, patch_len, stride
+            )
+        
+        # Get number of channels for column names
+        n_channels = train_dataset.data.shape[1]
+        column_names = [f'Channel_{i+1}' for i in range(n_channels)]
+        
+        # Create dataloaders
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False) if val_dataset else None
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False) if test_dataset else None
+        
+        return train_loader, val_loader, test_loader, column_names
+    else:
+        raise FileNotFoundError(f"Could not find dataset at {dataset_name}. Please ensure the .npy files exist.") 

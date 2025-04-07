@@ -4,7 +4,7 @@ from patchtst.patchTST import PatchTST
 
 def create_patchtst_model(c_in, target_dim, patch_len, stride, num_patch,
                 n_layers=3, d_model=128, n_heads=16, shared_embedding=True,
-                d_ff=256, dropout=0.2, head_dropout=0.2):
+                d_ff=256, dropout=0.2, head_dropout=0.2, head_type="pretrain"):
     """
     Create PatchTST model with specified parameters
     
@@ -21,6 +21,7 @@ def create_patchtst_model(c_in, target_dim, patch_len, stride, num_patch,
         d_ff: Dimension of feedforward network
         dropout: Dropout rate
         head_dropout: Head dropout rate
+        head_type: Type of head to use ("pretrain", "prediction", "regression", "classification")
     """
     model = PatchTST(
         c_in=c_in,
@@ -35,7 +36,8 @@ def create_patchtst_model(c_in, target_dim, patch_len, stride, num_patch,
         d_ff=d_ff,
         dropout=dropout,
         head_dropout=head_dropout,
-        head_type="pretrain"  # For pretraining
+        head_type=head_type,
+        norm='LayerNorm'
     )
     
     return model
