@@ -3,6 +3,7 @@ from patchtst.patchTST import PatchTST
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import numpy as np
 
 def create_patchtst_model(c_in, target_dim, patch_len, stride, num_patch,
                 n_layers=3, d_model=128, n_heads=16, shared_embedding=True,
