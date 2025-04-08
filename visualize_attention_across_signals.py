@@ -8,6 +8,57 @@ import math
 from pretrain import RevIN
 from pretrain import plot_reconstruction, get_fixed_mask, get_fixed_sample, create_dataloader
 
+def plot_signal(patches, ground_truth=None, reconstruction=None, mask=None, sample_idx=0, num_channels=3):
+    num_patches, channels, patch_size = patches.shape[1], patches.shape[2], patches.shape[3]
+    total_time = num_patches * (patch_size // 2) + (patch_size // 2)
+
+    fig, axes = plt.subplots(num_channels, 1, figsize=(12, 1.5*num_channels), sharex=True)
+
+    def reconstruct_full_signal(data, apply_mask=False):
+        full_signal = np.zeros((channels, total_time))
+        for p in range(num_patches):
+            start = p * (patch_size // 2)
+            end = start + patch_size
+            if not apply_mask or (mask is None or mask[sample_idx, p]):
+                segment = data[sample_idx, p, :, :]
+                if hasattr(segment, 'detach'):
+                    segment = segment.detach().cpu().numpy()
+                full_signal[:, start:end] = segment
+        return full_signal
+
+    full_signal = reconstruct_full_signal(patches)
+
+    if ground_truth is not None:
+        gt_signal = reconstruct_full_signal(ground_truth, apply_mask=True)
+    if reconstruction is not None:
+        recon_signal = reconstruct_full_signal(reconstruction, apply_mask=True)
+
+    for i in range(num_channels):
+        axes[i].plot(np.arange(total_time), full_signal[i, :], linewidth=0.8, label='Original', color='black')
+        if ground_truth is not None:
+            axes[i].plot(np.arange(total_time), gt_signal[i, :], 'b:', linewidth=0.8, label='Ground Truth')
+        if reconstruction is not None:
+            axes[i].plot(np.arange(total_time), recon_signal[i, :], 'r:', linewidth=0.8, label='Reconstruction')
+
+        axes[i].set_ylabel(f'Ch {i+1}')
+        axes[i].set_yticks([])
+        axes[i].spines['top'].set_visible(False)
+        axes[i].spines['right'].set_visible(False)
+        axes[i].spines['left'].set_visible(False)
+        axes[i].margins(y=0.1)
+
+        for t in range(0, total_time + 1, 125):
+            axes[i].axvline(x=t, color='gray', linestyle='--', linewidth=0.6)
+
+    axes[-1].set_xlabel('Time Steps')
+    axes[-1].set_xlim(0, total_time - 1)
+
+    axes[0].legend(loc='upper right')
+
+    print(f"Plotting first {num_channels} channels ...")
+    plt.tight_layout()
+    plt.show()
+
 
 #wandb.init()
 DATASET = 'seed_iv/session'
