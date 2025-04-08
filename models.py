@@ -115,6 +115,9 @@ class RevIN(nn.Module):
         return x
 
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 def plot_signal(patches, ground_truth=None, reconstruction=None, mask=None, sample_idx=0, num_channels=3):
     num_patches, channels, patch_size = patches.shape[1], patches.shape[2], patches.shape[3]
     total_time = num_patches * (patch_size // 2) + (patch_size // 2)
@@ -135,10 +138,24 @@ def plot_signal(patches, ground_truth=None, reconstruction=None, mask=None, samp
 
     full_signal = reconstruct_full_signal(patches)
 
-    if ground_truth is not None:
-        gt_signal = reconstruct_full_signal(ground_truth, apply_mask=True)
-    if reconstruction is not None:
-        recon_signal = reconstruct_full_signal(reconstruction, apply_mask=True)
+    gt_signal = np.full((channels, total_time), np.nan)
+    recon_signal = np.full((channels, total_time), np.nan)
+
+    if ground_truth is not None and reconstruction is not None and mask is not None:
+        for p in range(num_patches):
+            if mask[sample_idx, p]:
+                start = p * (patch_size // 2)
+                end = start + patch_size
+                gt_segment = ground_truth[sample_idx, p]
+                recon_segment = reconstruction[sample_idx, p]
+
+                if hasattr(gt_segment, 'detach'):
+                    gt_segment = gt_segment.detach().cpu().numpy()
+                if hasattr(recon_segment, 'detach'):
+                    recon_segment = recon_segment.detach().cpu().numpy()
+
+                gt_signal[:, start:end] = gt_segment
+                recon_signal[:, start:end] = recon_segment
 
     for i in range(num_channels):
         axes[i].plot(np.arange(total_time), full_signal[i, :], linewidth=0.8, label='Original', color='black')
